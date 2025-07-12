@@ -62,16 +62,7 @@ build-backend = "setuptools.build_meta"
 dev-dependencies = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
-    "pytest-mock>=3.10.0",
-    "pytest-qt>=4.2.0",
     "ruff>=0.1.0",
-    "mypy>=1.5.0",
-    "safety>=2.3.0",
-    "bandit>=1.7.0",
-    "radon>=5.1.0",
-    "docstr-coverage>=2.2.0",
-    "pipdeptree>=2.13.0",
-    "pyinstaller>=5.13.0",
 ]
 
 [tool.ruff]

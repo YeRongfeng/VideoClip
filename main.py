@@ -540,7 +540,11 @@ class VideoCropper:
         if hasattr(self, 'video_processor'):
             self.video_processor.release()
 
-if __name__ == "__main__":
+def main():
+    """主函数入口点"""
     root = tk.Tk()
     app = VideoCropper(root)
     root.mainloop()
+
+if __name__ == "__main__":
+    main()

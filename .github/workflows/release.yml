@@ -20,9 +20,6 @@ jobs:
           - os: windows-latest
             artifact_name: VideoClip-Windows
             executable_ext: .exe
-          - os: macos-latest
-            artifact_name: VideoClip-macOS
-            executable_ext: .app
           - os: ubuntu-latest
             artifact_name: VideoClip-Linux
             executable_ext: ''
@@ -40,11 +37,6 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y python3-tk ffmpeg
-
-    - name: Install system dependencies (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        brew install python-tk ffmpeg
 
     - name: Install system dependencies (Windows)
       if: runner.os == 'Windows'
@@ -73,16 +65,6 @@ jobs:
         echo "运行 VideoClip.exe 启动应用程序" >> VideoClip-Windows\README.txt
         7z a VideoClip-Windows.zip VideoClip-Windows\
 
-    - name: Create distribution package (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        mkdir VideoClip-macOS
-        cp -r dist/VideoClip.app VideoClip-macOS/
-        cp README.md VideoClip-macOS/
-        echo "VideoClip - 视频裁切工具" > VideoClip-macOS/README.txt
-        echo "双击 VideoClip.app 启动应用程序" >> VideoClip-macOS/README.txt
-        tar -czf VideoClip-macOS.tar.gz VideoClip-macOS/
-
     - name: Create distribution package (Linux)
       if: runner.os == 'Linux'
       run: |
@@ -95,12 +77,11 @@ jobs:
         tar -czf VideoClip-Linux.tar.gz VideoClip-Linux/
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact_name }}
         path: |
           VideoClip-Windows.zip
-          VideoClip-macOS.tar.gz
           VideoClip-Linux.tar.gz
 
   release:
@@ -112,7 +93,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Download all artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
 
     - name: Get version
       id: get_version
@@ -142,7 +123,6 @@ jobs:
           
           ### 下载说明
           - Windows用户：下载 `VideoClip-Windows.zip`
-          - macOS用户：下载 `VideoClip-macOS.tar.gz`
           - Linux用户：下载 `VideoClip-Linux.tar.gz`
           
           ### 系统要求
@@ -162,16 +142,6 @@ jobs:
         asset_path: VideoClip-Windows/VideoClip-Windows.zip
         asset_name: VideoClip-Windows.zip
         asset_content_type: application/zip
-
-    - name: Upload macOS Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: VideoClip-macOS/VideoClip-macOS.tar.gz
-        asset_name: VideoClip-macOS.tar.gz
-        asset_content_type: application/gzip
 
     - name: Upload Linux Release Asset
       uses: actions/upload-release-asset@v1

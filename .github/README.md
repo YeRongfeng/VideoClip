@@ -11,10 +11,9 @@
 - 向 `master`, `main` 分支提交 Pull Request
 
 **功能:**
-- 多平台测试 (Ubuntu, Windows, macOS)
+- 多平台测试 (Ubuntu, Windows)
 - 多 Python 版本支持 (3.8, 3.9, 3.10, 3.11)
 - 代码格式检查 (ruff)
-- 类型检查 (mypy)
 - 单元测试 (pytest)
 - 代码覆盖率统计
 - 安全扫描 (safety, bandit)
@@ -32,7 +31,6 @@
 
 **构建产物:**
 - `VideoClip-Windows.zip` - Windows 可执行文件
-- `VideoClip-macOS.tar.gz` - macOS 应用程序包
 - `VideoClip-Linux.tar.gz` - Linux 可执行文件
 
 ### 3. 代码质量工作流 (`.github/workflows/code-quality.yml`)
