@@ -152,8 +152,21 @@ class VideoCropper:
         
         frame = self.video_processor.get_frame(frame_num)
         if frame is not None:
-            self.video_canvas.show_frame(frame)
-            self.crop_controller.redraw_crop_rectangle()
+            # 如果在裁切预览模式下，显示裁切后的帧
+            if self.is_in_crop_preview and self.crop_controller.has_valid_crop():
+                crop_params = self.crop_controller.get_crop_params()
+                try:
+                    cropped_frame = frame[crop_params['y']:crop_params['y']+crop_params['height'], 
+                                          crop_params['x']:crop_params['x']+crop_params['width']]
+                    self.video_canvas.show_preview(cropped_frame)
+                except Exception:
+                    # 如果裁切失败，回退到原始帧显示
+                    self.video_canvas.show_frame(frame)
+                    self.crop_controller.redraw_crop_rectangle()
+            else:
+                # 正常模式下显示原始帧
+                self.video_canvas.show_frame(frame)
+                self.crop_controller.redraw_crop_rectangle()
         
         # 更新状态栏显示当前时间（使用1基索引显示更直观）
         video_info = self.video_processor.get_video_info()
@@ -168,8 +181,21 @@ class VideoCropper:
             
         frame = self.video_processor.get_frame(frame_num)
         if frame is not None:
-            self.video_canvas.show_frame(frame)
-            self.crop_controller.redraw_crop_rectangle()
+            # 如果在裁切预览模式下，显示裁切后的帧
+            if self.is_in_crop_preview and self.crop_controller.has_valid_crop():
+                crop_params = self.crop_controller.get_crop_params()
+                try:
+                    cropped_frame = frame[crop_params['y']:crop_params['y']+crop_params['height'], 
+                                          crop_params['x']:crop_params['x']+crop_params['width']]
+                    self.video_canvas.show_preview(cropped_frame)
+                except Exception:
+                    # 如果裁切失败，回退到原始帧显示
+                    self.video_canvas.show_frame(frame)
+                    self.crop_controller.redraw_crop_rectangle()
+            else:
+                # 正常模式下显示原始帧
+                self.video_canvas.show_frame(frame)
+                self.crop_controller.redraw_crop_rectangle()
 
     def on_crop_changed(self, x, y, width, height):
         """裁切区域变化时的回调"""
