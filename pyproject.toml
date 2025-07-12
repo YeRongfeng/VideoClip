@@ -1,10 +1,155 @@
 [project]
 name = "videoclip"
 version = "0.1.0"
-description = "Add your description here"
+description = "A powerful video cropping and trimming tool with GUI"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.8"
 dependencies = [
-    "opencv-python>=4.11.0.86",
-    "pillow>=11.2.1",
+    "opencv-python>=4.8.0",
+    "pillow>=10.0.0",
+]
+authors = [
+    { name = "YeRongfeng", email = "your.email@example.com" }
+]
+keywords = ["video", "cropping", "trimming", "gui", "tkinter"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Multimedia :: Video :: Conversion",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+    "pytest-qt>=4.2.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+    "safety>=2.3.0",
+    "bandit>=1.7.0",
+    "radon>=5.1.0",
+    "docstr-coverage>=2.2.0",
+    "pipdeptree>=2.13.0",
+]
+build = [
+    "pyinstaller>=5.13.0",
+    "setuptools>=68.0.0",
+    "wheel>=0.41.0",
+]
+
+[project.scripts]
+videoclip = "main:main"
+
+[project.urls]
+Homepage = "https://github.com/YeRongfeng/VideoClip"
+Repository = "https://github.com/YeRongfeng/VideoClip.git"
+Issues = "https://github.com/YeRongfeng/VideoClip/issues"
+
+[build-system]
+requires = ["setuptools>=68.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+    "pytest-qt>=4.2.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+    "safety>=2.3.0",
+    "bandit>=1.7.0",
+    "radon>=5.1.0",
+    "docstr-coverage>=2.2.0",
+    "pipdeptree>=2.13.0",
+    "pyinstaller>=5.13.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by formatter
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--verbose",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+[tool.coverage.run]
+source = [".", "tests"]
+omit = [
+    "tests/*",
+    "venv/*",
+    ".venv/*",
+    "build/*",
+    "dist/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
 ]

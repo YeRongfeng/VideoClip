@@ -1,0 +1,184 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: VideoClip-Windows
+            executable_ext: .exe
+          - os: macos-latest
+            artifact_name: VideoClip-macOS
+            executable_ext: .app
+          - os: ubuntu-latest
+            artifact_name: VideoClip-Linux
+            executable_ext: ''
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install system dependencies (Ubuntu)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-tk ffmpeg
+
+    - name: Install system dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew install python-tk ffmpeg
+
+    - name: Install system dependencies (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        choco install ffmpeg
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+
+    - name: Install dependencies
+      run: |
+        uv sync
+        uv add pyinstaller
+
+    - name: Build executable
+      run: |
+        uv run pyinstaller --name=VideoClip --onefile --windowed --add-data="*.py:." main.py
+
+    - name: Create distribution package (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        mkdir VideoClip-Windows
+        copy dist\VideoClip.exe VideoClip-Windows\
+        copy README.md VideoClip-Windows\
+        echo "VideoClip - 视频裁切工具" > VideoClip-Windows\README.txt
+        echo "运行 VideoClip.exe 启动应用程序" >> VideoClip-Windows\README.txt
+        7z a VideoClip-Windows.zip VideoClip-Windows\
+
+    - name: Create distribution package (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        mkdir VideoClip-macOS
+        cp -r dist/VideoClip.app VideoClip-macOS/
+        cp README.md VideoClip-macOS/
+        echo "VideoClip - 视频裁切工具" > VideoClip-macOS/README.txt
+        echo "双击 VideoClip.app 启动应用程序" >> VideoClip-macOS/README.txt
+        tar -czf VideoClip-macOS.tar.gz VideoClip-macOS/
+
+    - name: Create distribution package (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        mkdir VideoClip-Linux
+        cp dist/VideoClip VideoClip-Linux/
+        cp README.md VideoClip-Linux/
+        echo "VideoClip - 视频裁切工具" > VideoClip-Linux/README.txt
+        echo "运行 ./VideoClip 启动应用程序" >> VideoClip-Linux/README.txt
+        chmod +x VideoClip-Linux/VideoClip
+        tar -czf VideoClip-Linux.tar.gz VideoClip-Linux/
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.artifact_name }}
+        path: |
+          VideoClip-Windows.zip
+          VideoClip-macOS.tar.gz
+          VideoClip-Linux.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+
+    - name: Get version
+      id: get_version
+      run: |
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+        else
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.get_version.outputs.VERSION }}
+        release_name: VideoClip ${{ steps.get_version.outputs.VERSION }}
+        body: |
+          ## VideoClip ${{ steps.get_version.outputs.VERSION }}
+          
+          ### 新功能
+          - 视频空间裁切功能
+          - 视频时间剪辑功能
+          - 实时预览播放
+          - 多平台支持
+          
+          ### 下载说明
+          - Windows用户：下载 `VideoClip-Windows.zip`
+          - macOS用户：下载 `VideoClip-macOS.tar.gz`
+          - Linux用户：下载 `VideoClip-Linux.tar.gz`
+          
+          ### 系统要求
+          - Python 3.8+ (如果从源码运行)
+          - FFmpeg (用于视频处理)
+          - 支持的视频格式：MP4, AVI, MOV, MKV
+          
+        draft: false
+        prerelease: false
+
+    - name: Upload Windows Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: VideoClip-Windows/VideoClip-Windows.zip
+        asset_name: VideoClip-Windows.zip
+        asset_content_type: application/zip
+
+    - name: Upload macOS Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: VideoClip-macOS/VideoClip-macOS.tar.gz
+        asset_name: VideoClip-macOS.tar.gz
+        asset_content_type: application/gzip
+
+    - name: Upload Linux Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: VideoClip-Linux/VideoClip-Linux.tar.gz
+        asset_name: VideoClip-Linux.tar.gz
+        asset_content_type: application/gzip

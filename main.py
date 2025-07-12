@@ -46,6 +46,9 @@ class VideoCropper:
         self.is_playing = False
         self.play_timer = None
         self.is_in_crop_preview = False  # 标识是否在裁切预览模式
+        self.cached_video_info = None  # 缓存视频信息以提高播放性能
+        self.current_play_frame = 0  # 播放时的当前帧数（避免频繁查询UI）
+        self.last_status_update_frame = -1  # 上次更新状态栏的帧数
 
     def _setup_callbacks(self):
         """设置组件之间的回调"""
@@ -172,7 +175,12 @@ class VideoCropper:
         video_info = self.video_processor.get_video_info()
         current_time = frame_num / video_info['fps'] if video_info['fps'] > 0 else 0
         time_str = format_time(current_time)
-        self.status_bar.set_status(f"预览帧: {frame_num + 1}/{video_info['total_frames']} (时间: {time_str})")
+        
+        # 更详细的状态信息
+        status_text = f"预览帧: 第{frame_num + 1}帧 / {video_info['total_frames']} 帧 (时间: {time_str})"
+        if self.is_in_crop_preview:
+            status_text += " | 裁切预览模式"
+        self.status_bar.set_status(status_text)
     
     def update_preview_for_playback(self, frame_num):
         """播放时的优化预览更新（减少状态栏更新频率）"""
@@ -196,6 +204,18 @@ class VideoCropper:
                 # 正常模式下显示原始帧
                 self.video_canvas.show_frame(frame)
                 self.crop_controller.redraw_crop_rectangle()
+        
+        # 播放时也更新时间信息（但减少更新频率以提高性能）
+        if hasattr(self, 'cached_video_info') and self.cached_video_info:
+            # 每5帧更新一次状态栏，提高播放性能
+            if self.last_status_update_frame == -1 or (frame_num - self.last_status_update_frame) >= 5:
+                current_time = frame_num / self.cached_video_info['fps'] if self.cached_video_info['fps'] > 0 else 0
+                time_str = format_time(current_time)
+                status_text = f"播放中: 第{frame_num + 1}帧 / {self.cached_video_info['total_frames']} 帧 (时间: {time_str})"
+                if self.is_in_crop_preview:
+                    status_text += " | 裁切预览模式"
+                self.status_bar.set_status(status_text)
+                self.last_status_update_frame = frame_num
 
     def on_crop_changed(self, x, y, width, height):
         """裁切区域变化时的回调"""
@@ -402,6 +422,8 @@ class VideoCropper:
             new_frame = current_frame - 1
             self.control_panel.set_current_frame(new_frame)
             self.update_preview(new_frame)
+            # 同步播放帧跟踪
+            self.current_play_frame = new_frame
     
     def next_frame(self):
         """下一帧"""
@@ -413,6 +435,8 @@ class VideoCropper:
             new_frame = current_frame + 1
             self.control_panel.set_current_frame(new_frame)
             self.update_preview(new_frame)
+            # 同步播放帧跟踪
+            self.current_play_frame = new_frame
     
     def toggle_play(self):
         """播放/暂停切换"""
@@ -428,6 +452,13 @@ class VideoCropper:
         """开始播放"""
         self.is_playing = True
         self.control_panel.set_play_button_text("暂停")
+        
+        # 缓存视频信息以提高播放性能
+        self.cached_video_info = self.video_processor.get_video_info()
+        
+        # 从当前UI位置开始播放
+        self.current_play_frame = self.control_panel.get_current_frame()
+        
         self.play_next_frame()
     
     def stop_playback(self):
@@ -437,36 +468,50 @@ class VideoCropper:
         if self.play_timer:
             self.root.after_cancel(self.play_timer)
             self.play_timer = None
+        
+        # 清除缓存
+        self.cached_video_info = None
+        
+        # 确保UI显示正确的最后播放帧信息
+        if self.video_loaded:
+            video_info = self.video_processor.get_video_info()
+            current_time = self.current_play_frame / video_info['fps'] if video_info['fps'] > 0 else 0
+            time_str = format_time(current_time)
+            self.status_bar.set_status(f"预览帧: 第{self.current_play_frame + 1}帧 / {video_info['total_frames']} 帧 (时间: {time_str})")
     
     def play_next_frame(self):
         """播放下一帧"""
         if not self.is_playing:
             return
-            
-        current_frame = self.control_panel.get_current_frame()
-        video_info = self.video_processor.get_video_info()
+        
+        # 使用缓存的视频信息
+        video_info = self.cached_video_info
         
         # 检查是否到达结束
         max_frame = video_info['total_frames'] - 1
-        if self.trim_enabled and current_frame >= self.end_frame:
+        if self.trim_enabled and self.current_play_frame >= self.end_frame:
             # 如果启用了时间裁切且到达结束帧，停止播放
             self.stop_playback()
             return
-        elif not self.trim_enabled and current_frame >= max_frame:
+        elif not self.trim_enabled and self.current_play_frame >= max_frame:
             # 如果到达视频末尾，停止播放
             self.stop_playback()
             return
         
         # 播放下一帧
-        new_frame = current_frame + 1
-        self.control_panel.set_current_frame(new_frame)
-        # 播放时使用优化的预览更新
-        self.update_preview_for_playback(new_frame)
+        self.current_play_frame += 1
         
-        # 计算播放间隔（基于帧率），使用浮点数计算提高精度
+        # 直接更新预览，避免触发UI回调
+        self.update_preview_for_playback(self.current_play_frame)
+        
+        # 然后更新UI控件（但不触发回调）
+        self.control_panel.set_current_frame_no_callback(self.current_play_frame)
+        
+        # 计算播放间隔（基于帧率）
         fps = video_info['fps']
         if fps > 0:
-            interval = max(16, round(1000.0 / fps))  # 最小16ms间隔（约60fps最大）
+            # 使用更精确的时间计算，确保播放速度正确
+            interval = max(8, int(1000.0 / fps))  # 最小8ms间隔，确保不会太快
         else:
             interval = 33  # 默认30fps
         

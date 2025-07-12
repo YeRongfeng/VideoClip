@@ -1,0 +1,109 @@
+name: Dependencies Update
+
+on:
+  schedule:
+    # 每周一早上8点检查依赖更新
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+jobs:
+  update-dependencies:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+
+    - name: Update dependencies
+      run: |
+        uv lock --upgrade
+
+    - name: Check for security vulnerabilities
+      run: |
+        uv run safety check
+
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: 'chore: update dependencies'
+        title: 'chore: Update dependencies'
+        body: |
+          ## 依赖更新
+
+          此PR由自动化工作流创建，用于更新项目依赖到最新版本。
+
+          ### 更改内容
+          - 更新了 `uv.lock` 文件中的依赖版本
+          - 所有依赖已通过安全扫描
+
+          ### 验证步骤
+          - [ ] 所有测试通过
+          - [ ] 安全扫描无问题
+          - [ ] 应用程序正常运行
+
+          ### 合并前请确保
+          1. 检查是否有破坏性更改
+          2. 运行完整的测试套件
+          3. 手动测试核心功能
+
+        branch: automated/dependency-updates
+        delete-branch: true
+
+  check-outdated:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+
+    - name: Check outdated dependencies
+      run: |
+        uv sync
+        echo "## 过期的依赖包" > outdated-report.md
+        echo "" >> outdated-report.md
+        uv pip list --outdated --format=json > outdated.json || echo "[]" > outdated.json
+        python -c "
+        import json
+        with open('outdated.json') as f:
+            outdated = json.load(f)
+        
+        if outdated:
+            with open('outdated-report.md', 'a') as f:
+                f.write('| 包名 | 当前版本 | 最新版本 |\n')
+                f.write('|------|----------|----------|\n')
+                for pkg in outdated:
+                    f.write(f'| {pkg[\"name\"]} | {pkg[\"version\"]} | {pkg[\"latest_version\"]} |\n')
+        else:
+            with open('outdated-report.md', 'a') as f:
+                f.write('所有依赖都是最新的！✅\n')
+        "
+
+    - name: Upload outdated report
+      uses: actions/upload-artifact@v3
+      with:
+        name: outdated-dependencies-report
+        path: outdated-report.md
+
+    - name: Comment on latest commit (if outdated packages found)
+      if: always()
+      run: |
+        if [ -s outdated.json ] && [ "$(cat outdated.json)" != "[]" ]; then
+          echo "发现过期的依赖包，请考虑更新。"
+        fi

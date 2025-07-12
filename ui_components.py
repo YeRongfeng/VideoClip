@@ -309,6 +309,15 @@ class VideoControlPanel:
     def set_current_frame(self, frame):
         """设置当前预览帧"""
         self.frame_slider.set(frame)
+    
+    def set_current_frame_no_callback(self, frame):
+        """设置当前预览帧但不触发回调（用于播放时的高频更新）"""
+        # 临时移除回调
+        current_command = self.frame_slider.cget('command')
+        self.frame_slider.config(command='')
+        self.frame_slider.set(frame)
+        # 恢复回调
+        self.frame_slider.config(command=current_command)
 
 
 class VideoCanvas:

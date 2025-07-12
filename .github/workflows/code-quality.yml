@@ -1,0 +1,110 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  schedule:
+    # 每周日运行一次代码质量检查
+    - cron: '0 0 * * 0'
+
+jobs:
+  code-quality:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # 获取完整历史以进行更好的分析
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-tk
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras --dev
+
+    - name: Run ruff linting
+      run: |
+        uv run ruff check . --output-format=github
+
+    - name: Run ruff formatting check
+      run: |
+        uv run ruff format --check .
+
+    - name: Run mypy type checking
+      run: |
+        uv run mypy . --show-error-codes
+
+    - name: Run complexity analysis
+      run: |
+        uv run radon cc . --min B
+
+    - name: Run maintainability analysis
+      run: |
+        uv run radon mi . --min B
+
+    - name: Check dependencies for known security vulnerabilities
+      run: |
+        uv run safety check --json --output safety-report.json || true
+
+    - name: Upload safety report
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: safety-report
+        path: safety-report.json
+
+    - name: Generate dependency graph
+      run: |
+        uv run pipdeptree --json > dependency-graph.json
+
+    - name: Upload dependency graph
+      uses: actions/upload-artifact@v3
+      with:
+        name: dependency-graph
+        path: dependency-graph.json
+
+  documentation:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+
+    - name: Install dependencies
+      run: |
+        uv sync --dev
+        uv add sphinx sphinx-rtd-theme
+
+    - name: Check docstring coverage
+      run: |
+        uv run docstr-coverage . --badge=docstring-coverage.svg
+
+    - name: Upload docstring coverage badge
+      uses: actions/upload-artifact@v3
+      with:
+        name: docstring-coverage
+        path: docstring-coverage.svg
+
+    - name: Validate README links
+      run: |
+        uv add markdown-link-check
+        uv run markdown-link-check README.md || true
