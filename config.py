@@ -14,21 +14,14 @@ CANVAS_BG = "#d0d0d0"
 STATUS_BG = "#d0d0d0"
 
 # 文件类型
-SUPPORTED_VIDEO_FORMATS = [
-    ("视频文件", "*.mp4 *.avi *.mov *.mkv *.flv"),
-    ("所有文件", "*.*")
-]
+SUPPORTED_VIDEO_FORMATS = [("视频文件", "*.mp4 *.avi *.mov *.mkv *.flv"), ("所有文件", "*.*")]
 
-OUTPUT_VIDEO_FORMATS = [
-    ("MP4视频", "*.mp4"),
-    ("AVI视频", "*.avi"),
-    ("所有文件", "*.*")
-]
+OUTPUT_VIDEO_FORMATS = [("MP4视频", "*.mp4"), ("AVI视频", "*.avi"), ("所有文件", "*.*")]
 
 # 处理配置
 PROGRESS_UPDATE_INTERVAL = 10  # 每多少帧更新一次进度
 DEFAULT_OUTPUT_EXTENSION = ".mp4"
-VIDEO_FOURCC = 'mp4v'
+VIDEO_FOURCC = "mp4v"
 
 # UI配置
 BUTTON_WIDTH = 15
