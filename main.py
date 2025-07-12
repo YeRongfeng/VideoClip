@@ -1,552 +1,473 @@
-import cv2
-import numpy as np
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from PIL import Image, ImageTk
-import threading
 import os
-import sys
+
+from ui_components import VideoControlPanel, VideoCanvas, StatusBar
+from video_processor import VideoProcessor, CallbackManager
+from crop_controller import CropController
+from utils import format_time, generate_output_filename
+from config import *
 
 class VideoCropper:
     def __init__(self, root):
         self.root = root
-        self.root.title("视频尺寸裁切工具")
-        self.root.geometry("1000x700")
-        self.root.configure(bg="#f0f0f0")
+        self.root.title(WINDOW_TITLE)
+        self.root.geometry(WINDOW_SIZE)
+        self.root.configure(bg=WINDOW_BG)
         
-        # 视频相关变量
-        self.video_path = ""
-        self.cap = None
-        self.total_frames = 0
-        self.fps = 0
-        self.frame_width = 0
-        self.frame_height = 0
+        # 初始化组件和处理器
+        self._init_components()
+        self._setup_callbacks()
         
-        # 裁切参数
-        self.crop_x = 0
-        self.crop_y = 0
-        self.crop_width = 0
-        self.crop_height = 0
-        self.drawing = False
-        self.rect_start = (0, 0)
-        self.rect_end = (0, 0)
-        self.display_offset = (0, 0)  # 添加图像显示偏移量
-        
-        # 创建界面
-        self.create_widgets()
-        
-        # 绑定事件
-        self.canvas.bind("<ButtonPress-1>", self.start_draw)
-        self.canvas.bind("<B1-Motion>", self.draw_rect)
-        self.canvas.bind("<ButtonRelease-1>", self.stop_draw)
+        # 绑定窗口调整事件
         self.root.bind("<Configure>", self.on_window_resize)
 
-    def create_widgets(self):
-        # 顶部控制区域
-        control_frame = tk.Frame(self.root, bg="#e0e0e0", padx=10, pady=10)
-        control_frame.pack(fill=tk.X)
-        
-        # 文件选择
-        file_frame = tk.Frame(control_frame, bg="#e0e0e0")
-        file_frame.pack(fill=tk.X, pady=5)
-        
-        tk.Label(file_frame, text="视频文件:", bg="#e0e0e0").pack(side=tk.LEFT)
-        self.file_entry = tk.Entry(file_frame, width=50)
-        self.file_entry.pack(side=tk.LEFT, padx=5)
-        tk.Button(file_frame, text="浏览...", command=self.browse_file).pack(side=tk.LEFT)
-        
-        # 预览控制
-        preview_frame = tk.Frame(control_frame, bg="#e0e0e0")
-        preview_frame.pack(fill=tk.X, pady=5)
-        
-        tk.Label(preview_frame, text="预览帧:", bg="#e0e0e0").pack(side=tk.LEFT)
-        self.frame_slider = tk.Scale(preview_frame, from_=0, to=100, orient=tk.HORIZONTAL, 
-                                    showvalue=True, command=self.update_preview)
-        self.frame_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
-        
-        # 裁切参数显示
-        param_frame = tk.Frame(control_frame, bg="#e0e0e0")
-        param_frame.pack(fill=tk.X, pady=5)
-        
-        tk.Label(param_frame, text="裁切区域:", bg="#e0e0e0").grid(row=0, column=0, sticky="w")
-        self.pos_label = tk.Label(param_frame, text="X: 0, Y: 0", bg="#e0e0e0")
-        self.pos_label.grid(row=0, column=1, padx=5, sticky="w")
-        
-        tk.Label(param_frame, text="尺寸:", bg="#e0e0e0").grid(row=0, column=2, padx=(20, 5), sticky="w")
-        self.size_label = tk.Label(param_frame, text="宽: 0, 高: 0", bg="#e0e0e0")
-        self.size_label.grid(row=0, column=3, padx=5, sticky="w")
-        
-        # 操作按钮
-        button_frame = tk.Frame(control_frame, bg="#e0e0e0")
-        button_frame.pack(fill=tk.X, pady=10)
-        
-        self.preview_button = tk.Button(button_frame, text="预览裁切", command=self.preview_crop, 
-                                      state=tk.DISABLED, width=15)
-        self.preview_button.pack(side=tk.LEFT, padx=10)
-        
-        self.crop_button = tk.Button(button_frame, text="裁切视频", command=self.start_cropping, 
-                                    state=tk.DISABLED, width=15)
-        self.crop_button.pack(side=tk.LEFT, padx=10)
-        
-        self.reset_button = tk.Button(button_frame, text="重置选择", command=self.reset_selection,
-                                    state=tk.DISABLED, width=15)
-        self.reset_button.pack(side=tk.LEFT, padx=10)
-        
-        # 分割线
+    def _init_components(self):
+        """初始化UI组件和处理器"""
+        # UI组件
+        self.control_panel = VideoControlPanel(self.root, bg_color=CONTROL_BG)
         separator = tk.Frame(self.root, height=2, bg="gray")
         separator.pack(fill=tk.X, pady=5)
+        self.video_canvas = VideoCanvas(self.root)
+        self.status_bar = StatusBar(self.root)
         
-        # 图像显示区域
-        img_frame = tk.Frame(self.root, bg="#d0d0d0", padx=10, pady=10)
-        img_frame.pack(fill=tk.BOTH, expand=True)
+        # 逻辑和处理组件
+        self.callback_manager = CallbackManager(self.root)
+        self.video_processor = VideoProcessor(self.callback_manager)
+        self.crop_controller = CropController(self.video_canvas)
         
-        self.canvas = tk.Canvas(img_frame, bg="black", cursor="cross")
-        self.canvas.pack(fill=tk.BOTH, expand=True)
+        # 状态变量
+        self.video_loaded = False
+        self.trim_enabled = False
+        self.start_frame = 0
+        self.end_frame = 0
         
-        # 状态栏
-        self.status_bar = tk.Label(self.root, text="就绪", bd=1, relief=tk.SUNKEN, anchor=tk.W, bg="#d0d0d0")
-        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        # 播放控制状态
+        self.is_playing = False
+        self.play_timer = None
+        self.is_in_crop_preview = False  # 标识是否在裁切预览模式
+
+    def _setup_callbacks(self):
+        """设置组件之间的回调"""
+        # 控制面板回调
+        self.control_panel.set_callback('browse_file', self.browse_file)
+        self.control_panel.set_callback('frame_change', self.update_preview)
+        self.control_panel.set_callback('toggle_trim', self.toggle_trim)
+        self.control_panel.set_callback('start_frame_change', self.update_start_frame)
+        self.control_panel.set_callback('end_frame_change', self.update_end_frame)
+        self.control_panel.set_callback('preview_crop', self.preview_crop)
+        self.control_panel.set_callback('process_video', self.start_processing)
+        self.control_panel.set_callback('reset_selection', self.reset_selection)
         
-        # 添加缩放信息显示
-        self.scale_info = tk.Label(self.root, text="缩放比例: -", bd=1, relief=tk.SUNKEN, anchor=tk.W, bg="#d0d0d0")
-        self.scale_info.pack(side=tk.BOTTOM, fill=tk.X)
+        # 新增的播放控制回调
+        self.control_panel.set_callback('prev_frame', self.prev_frame)
+        self.control_panel.set_callback('next_frame', self.next_frame)
+        self.control_panel.set_callback('toggle_play', self.toggle_play)
+        self.control_panel.set_callback('set_start_frame', self.set_start_frame_to_current)
+        self.control_panel.set_callback('set_end_frame', self.set_end_frame_to_current)
+        
+        # 视频处理回调
+        self.callback_manager.set_callbacks(
+            progress_cb=self.on_progress,
+            complete_cb=self.on_complete,
+            error_cb=self.on_error,
+            warning_cb=self.on_warning
+        )
+        
+        # 裁切控制器回调
+        self.crop_controller.on_crop_changed = self.on_crop_changed
+        
+        # 画布回调
+        self.video_canvas.set_callback('back_to_preview', self.back_to_preview)
 
     def browse_file(self):
-        file_path = filedialog.askopenfilename(
-            filetypes=[("视频文件", "*.mp4 *.avi *.mov *.mkv *.flv"), ("所有文件", "*.*")]
-        )
+        """浏览并加载视频文件"""
+        file_path = filedialog.askopenfilename(filetypes=SUPPORTED_VIDEO_FORMATS)
         if file_path:
-            self.video_path = file_path
-            self.file_entry.delete(0, tk.END)
-            self.file_entry.insert(0, file_path)
-            self.load_video()
+            self.control_panel.set_file_path(file_path)
+            self.load_video(file_path)
 
-    def load_video(self):
-        if self.cap:
-            self.cap.release()
-        
-        self.cap = cv2.VideoCapture(self.video_path)
-        if not self.cap.isOpened():
-            messagebox.showerror("错误", "无法打开视频文件")
+    def load_video(self, video_path):
+        """加载视频"""
+        success, message = self.video_processor.load_video(video_path)
+        if not success:
+            messagebox.showerror("错误", message)
             return
             
-        # 获取元数据
-        self.frame_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        self.frame_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        self.fps = self.cap.get(cv2.CAP_PROP_FPS)
-        self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.video_loaded = True
+        video_info = self.video_processor.get_video_info()
         
-        self.frame_slider.config(from_=0, to=self.total_frames-1)
+        # 初始化时间裁切状态变量
+        self.start_frame = 0
+        self.end_frame = video_info['total_frames'] - 1  # 设置为最后一帧的索引
         
-        # 获取第一帧作为预览
-        success, frame = self.cap.read()
-        if success:
-            self.show_frame(frame)
-            self.preview_button.config(state=tk.NORMAL)
-            self.crop_button.config(state=tk.NORMAL)
-            self.reset_button.config(state=tk.NORMAL)
-            self.status_bar.config(text=f"已加载视频: {os.path.basename(self.video_path)} | 尺寸: {self.frame_width}x{self.frame_height} | 帧率: {self.fps:.2f} | 总帧数: {self.total_frames}")
-        else:
-            messagebox.showerror("错误", "无法读取视频帧")
-    
-    def show_frame(self, frame, reset_canvas=False):
-        if not hasattr(self, 'canvas') or self.canvas.winfo_width() < 10:
-            return
-            
-        self.current_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        self.pil_image = Image.fromarray(self.current_frame)
+        # 更新UI
+        self.control_panel.update_video_info(video_info['total_frames'], video_info['fps'])
+        self.control_panel.enable_controls(True)
         
-        # 调整图像大小以适应画布
-        canvas_width = self.canvas.winfo_width()
-        canvas_height = self.canvas.winfo_height()
+        # 确保结束帧与UI控件同步
+        self.end_frame = self.control_panel.get_end_frame()
         
-        img_ratio = self.frame_width / self.frame_height
-        canvas_ratio = canvas_width / canvas_height
+        status_text = (f"已加载视频: {os.path.basename(video_path)} | "
+                       f"尺寸: {video_info['width']}x{video_info['height']} | "
+                       f"帧率: {video_info['fps']:.2f} | "
+                       f"总帧数: {video_info['total_frames']}")
+        self.status_bar.set_status(status_text)
         
-        # 计算缩放后的尺寸
-        if img_ratio > canvas_ratio:
-            new_width = canvas_width
-            new_height = int(new_width / img_ratio)
-        else:
-            new_height = canvas_height
-            new_width = int(new_height * img_ratio)
+        # 显示第一帧
+        first_frame = self.video_processor.get_frame(0)
+        if first_frame is not None:
+            self.video_canvas.show_frame(first_frame)
+            self.status_bar.set_scale_info(self.video_canvas.scale_x, self.video_canvas.scale_y,
+                                           self.video_canvas.display_offset[0], self.video_canvas.display_offset[1])
         
-        # 计算图像偏移量（居中显示）
-        offset_x = (canvas_width - new_width) // 2
-        offset_y = (canvas_height - new_height) // 2
-        self.display_offset = (offset_x, offset_y)
-        
-        self.display_image = self.pil_image.resize((new_width, new_height), Image.LANCZOS)
-        self.tk_image = ImageTk.PhotoImage(image=self.display_image)
-        
-        # 清除画布并显示新图像
-        self.canvas.delete("all")
-        self.canvas.create_image(
-            offset_x + new_width // 2, 
-            offset_y + new_height // 2, 
-            image=self.tk_image, 
-            anchor=tk.CENTER
-        )
-        
-        # 更新缩放比例
-        self.scale_x = new_width / self.frame_width
-        self.scale_y = new_height / self.frame_height
-        self.scale_info.config(text=f"缩放比例: X: {self.scale_x:.4f}, Y: {self.scale_y:.4f} | 显示偏移: X: {offset_x}, Y: {offset_y}")
-        
-        # 如果已有裁切区域，则显示
-        if self.crop_width > 0 and self.crop_height > 0:
-            self.draw_crop_rectangle()
-        
-        # 确保图像不在垃圾回收时被删除
-        self.last_image = self.tk_image
+        self.update_time_info()
 
     def on_window_resize(self, event=None):
         """窗口大小改变时重绘当前帧"""
-        if self.cap and self.cap.isOpened() and hasattr(self, 'current_frame'):
-            # 获取当前帧位置
-            frame_pos = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_pos)
-            success, frame = self.cap.read()
-            if success:
-                self.show_frame(frame, True)
+        if self.video_loaded and not self.is_in_crop_preview:
+            current_frame_num = self.control_panel.get_current_frame()
+            frame = self.video_processor.get_frame(current_frame_num)
+            if frame is not None:
+                self.video_canvas.show_frame(frame)
+                self.crop_controller.redraw_crop_rectangle()
+                self.status_bar.set_scale_info(self.video_canvas.scale_x, self.video_canvas.scale_y,
+                                               self.video_canvas.display_offset[0], self.video_canvas.display_offset[1])
 
     def update_preview(self, value):
-        if self.cap and self.cap.isOpened():
-            frame_num = int(value)
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
-            success, frame = self.cap.read()
-            if success:
-                self.show_frame(frame)
-            self.status_bar.config(text=f"预览帧: {frame_num}/{self.total_frames}")
+        """更新预览帧"""
+        if not self.video_loaded:
+            return
+            
+        frame_num = int(value)
+        
+        # 如果启用了时间裁切，限制预览范围
+        if self.trim_enabled:
+            if frame_num < self.start_frame:
+                frame_num = self.start_frame
+                self.control_panel.set_current_frame(frame_num)
+            elif frame_num > self.end_frame:
+                frame_num = self.end_frame
+                self.control_panel.set_current_frame(frame_num)
+        
+        frame = self.video_processor.get_frame(frame_num)
+        if frame is not None:
+            self.video_canvas.show_frame(frame)
+            self.crop_controller.redraw_crop_rectangle()
+        
+        # 更新状态栏显示当前时间（使用1基索引显示更直观）
+        video_info = self.video_processor.get_video_info()
+        current_time = frame_num / video_info['fps'] if video_info['fps'] > 0 else 0
+        time_str = format_time(current_time)
+        self.status_bar.set_status(f"预览帧: {frame_num + 1}/{video_info['total_frames']} (时间: {time_str})")
+    
+    def update_preview_for_playback(self, frame_num):
+        """播放时的优化预览更新（减少状态栏更新频率）"""
+        if not self.video_loaded:
+            return
+            
+        frame = self.video_processor.get_frame(frame_num)
+        if frame is not None:
+            self.video_canvas.show_frame(frame)
+            self.crop_controller.redraw_crop_rectangle()
 
-    def start_draw(self, event):
-        if not self.cap or not self.cap.isOpened():
-            return
-            
-        # 确保点击在图像范围内
-        if (event.x < self.display_offset[0] or 
-            event.x > self.display_offset[0] + self.display_image.width or
-            event.y < self.display_offset[1] or 
-            event.y > self.display_offset[1] + self.display_image.height):
-            return
-            
-        self.drawing = True
-        self.rect_start = (event.x, event.y)
-        
-    def draw_rect(self, event):
-        if self.drawing:
-            # 限制在图像区域内
-            x = max(self.display_offset[0], min(event.x, self.display_offset[0] + self.display_image.width))
-            y = max(self.display_offset[1], min(event.y, self.display_offset[1] + self.display_image.height))
-            
-            self.rect_end = (x, y)
-            self.canvas.delete("rect")
-            self.canvas.create_rectangle(
-                self.rect_start[0], self.rect_start[1], 
-                self.rect_end[0], self.rect_end[1], 
-                outline="red", width=2, tags="rect"
-            )
-
-    def stop_draw(self, event):
-        if not self.drawing:
-            return
-            
-        self.drawing = False
-        
-        # 确保左上角和右下角的坐标正确
-        x1, y1 = self.rect_start
-        x2, y2 = self.rect_end
-        
-        if x1 > x2:
-            x1, x2 = x2, x1
-        if y1 > y2:
-            y1, y2 = y2, y1
-            
-        # 调整坐标到图像实际位置
-        x1 -= self.display_offset[0]
-        y1 -= self.display_offset[1]
-        x2 -= self.display_offset[0]
-        y2 -= self.display_offset[1]
-            
-        # 确保在图像范围内
-        x1 = max(0, min(x1, self.display_image.width))
-        y1 = max(0, min(y1, self.display_image.height))
-        x2 = max(0, min(x2, self.display_image.width))
-        y2 = max(0, min(y2, self.display_image.height))
-        
-        # 计算原始坐标（考虑缩放）
-        self.crop_x = int(x1 / self.scale_x)
-        self.crop_y = int(y1 / self.scale_y)
-        self.crop_width = int((x2 - x1) / self.scale_x)
-        self.crop_height = int((y2 - y1) / self.scale_y)
-        
-        # 限制在原始视频范围内
-        self.crop_x = max(0, min(self.crop_x, self.frame_width - 1))
-        self.crop_y = max(0, min(self.crop_y, self.frame_height - 1))
-        self.crop_width = min(self.crop_width, self.frame_width - self.crop_x)
-        self.crop_height = min(self.crop_height, self.frame_height - self.crop_y)
-        
-        # 更新UI显示
-        self.pos_label.config(text=f"X: {self.crop_x}, Y: {self.crop_y}")
-        self.size_label.config(text=f"宽: {self.crop_width}, 高: {self.crop_height}")
-        self.status_bar.config(text=f"已选择裁切区域: {self.crop_width}x{self.crop_height}")
-        
-        # 重新绘制矩形
-        self.draw_crop_rectangle()
-
-    def draw_crop_rectangle(self):
-        """根据裁切参数在画布上绘制矩形"""
-        if self.crop_width <= 0 or self.crop_height <= 0:
-            return
-            
-        # 将原始坐标转换为缩放后的坐标
-        x1 = int(self.crop_x * self.scale_x) + self.display_offset[0]
-        y1 = int(self.crop_y * self.scale_y) + self.display_offset[1]
-        x2 = x1 + int(self.crop_width * self.scale_x)
-        y2 = y1 + int(self.crop_height * self.scale_y)
-        
-        # 限制在画布内
-        canvas_width = self.canvas.winfo_width()
-        canvas_height = self.canvas.winfo_height()
-        x1 = max(0, min(x1, canvas_width))
-        y1 = max(0, min(y1, canvas_height))
-        x2 = max(0, min(x2, canvas_width))
-        y2 = max(0, min(y2, canvas_height))
-        
-        self.canvas.delete("rect")
-        self.canvas.create_rectangle(
-            x1, y1, x2, y2, 
-            outline="red", width=2, tags="rect"
-        )
+    def on_crop_changed(self, x, y, width, height):
+        """裁切区域变化时的回调"""
+        self.control_panel.update_crop_info(x, y, width, height)
+        self.status_bar.set_status(f"已选择裁切区域: {width}x{height}")
 
     def reset_selection(self):
-        """重置裁切区域选择"""
-        self.crop_x = 0
-        self.crop_y = 0
-        self.crop_width = 0
-        self.crop_height = 0
-        
-        self.pos_label.config(text="X: 0, Y: 0")
-        self.size_label.config(text="宽: 0, 高: 0")
-        
-        self.canvas.delete("rect")
-        self.status_bar.config(text="裁切区域已重置")
-        
-        # 重新显示当前帧
-        if self.cap and self.cap.isOpened():
-            current_frame = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, current_frame)
-            success, frame = self.cap.read()
-            if success:
-                self.show_frame(frame)
+        """重置裁切选择"""
+        self.crop_controller.reset_crop()
+        self.status_bar.set_status("裁切区域已重置")
+        self.update_preview(self.control_panel.get_current_frame())
 
     def preview_crop(self):
         """预览裁切效果"""
-        if not self.cap or not self.cap.isOpened() or self.crop_width <= 0 or self.crop_height <= 0:
+        if not self.video_loaded or not self.crop_controller.has_valid_crop():
             return
             
-        # 获取当前帧
-        current_frame_pos = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
-        self.cap.set(cv2.CAP_PROP_POS_FRAMES, current_frame_pos)
-        success, frame = self.cap.read()
-        if not success:
+        current_frame_num = self.control_panel.get_current_frame()
+        frame = self.video_processor.get_frame(current_frame_num)
+        if frame is None:
             return
             
-        # 裁切图像
+        crop_params = self.crop_controller.get_crop_params()
         try:
-            cropped = frame[self.crop_y:self.crop_y+self.crop_height, 
-                           self.crop_x:self.crop_x+self.crop_width]
+            cropped_frame = frame[crop_params['y']:crop_params['y']+crop_params['height'], 
+                                  crop_params['x']:crop_params['x']+crop_params['width']]
             
-            # 显示在画布上
-            cropped_rgb = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
-            cropped_pil = Image.fromarray(cropped_rgb)
-            
-            # 获取当前画布大小
-            canvas_width = self.canvas.winfo_width()
-            canvas_height = self.canvas.winfo_height()
-            
-            # 创建预览图片
-            preview_img = cropped_pil.copy()
-            
-            # 保持宽高比缩放
-            crop_ratio = cropped.shape[1] / cropped.shape[0]
-            canvas_ratio = canvas_width / canvas_height
-            
-            if crop_ratio > canvas_ratio:
-                new_width = canvas_width
-                new_height = int(new_width / crop_ratio)
-            else:
-                new_height = canvas_height
-                new_width = int(new_height * crop_ratio)
-            
-            if new_width > 0 and new_height > 0:
-                preview_img = preview_img.resize((new_width, new_height), Image.LANCZOS)
-            
-            # 计算居中的位置
-            offset_x = (canvas_width - new_width) // 2
-            offset_y = (canvas_height - new_height) // 2
-            
-            self.canvas.delete("all")
-            tk_preview = ImageTk.PhotoImage(image=preview_img)
-            self.canvas.create_image(
-                canvas_width // 2, 
-                canvas_height // 2, 
-                image=tk_preview, 
-                anchor=tk.CENTER
-            )
-            self.preview_tk_image = tk_preview  # 防止垃圾回收
-            
-            self.status_bar.config(text=f"裁切预览: {cropped.shape[1]}x{cropped.shape[0]} | 按'返回'按钮恢复")
-            
-            # 添加返回按钮
-            self.back_button = tk.Button(self.canvas, text="返回预览", 
-                                      command=self.back_to_preview, 
-                                      bg="#e0e0e0", fg="#000000")
-            self.back_button.place(x=10, y=10)
-            
+            self.is_in_crop_preview = True  # 设置预览模式标志
+            self.video_canvas.show_preview(cropped_frame)
+            self.status_bar.set_status(f"裁切预览: {cropped_frame.shape[1]}x{cropped_frame.shape[0]} | 按'返回'按钮恢复")
         except Exception as e:
             messagebox.showerror("预览错误", f"预览时出错: {str(e)}")
-            self.status_bar.config(text=f"预览错误: {str(e)}")
-    
-    def back_to_preview(self):
-        """返回预览模式"""
-        if self.cap and self.cap.isOpened():
-            current_frame = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, current_frame)
-            success, frame = self.cap.read()
-            if success:
-                self.show_frame(frame)
-                
-        if hasattr(self, 'back_button'):
-            self.back_button.destroy()
-        
-        self.status_bar.config(text="返回视频预览")
+            self.status_bar.set_status(f"预览错误: {str(e)}")
 
-    def start_cropping(self):
-        """开始裁切视频（在新线程中）"""
-        if not self.cap or not self.cap.isOpened() or self.crop_width <= 0 or self.crop_height <= 0:
+    def back_to_preview(self):
+        """从预览裁切返回"""
+        self.is_in_crop_preview = False  # 退出预览模式
+        if self.video_loaded:
+            current_frame_num = self.control_panel.get_current_frame()
+            frame = self.video_processor.get_frame(current_frame_num)
+            if frame is not None:
+                self.video_canvas.show_frame(frame)
+                self.crop_controller.redraw_crop_rectangle()
+        self.status_bar.set_status("返回视频预览")
+
+    def start_processing(self):
+        """开始处理视频"""
+        if not self.video_loaded:
             return
             
+        has_spatial_crop = self.crop_controller.has_valid_crop()
+        has_time_crop = self.trim_enabled and self.start_frame < self.end_frame
+        
+        if not has_spatial_crop and not has_time_crop:
+            messagebox.showwarning("警告", "请至少选择空间裁切区域或启用时间裁切！")
+            return
+        
+        crop_params = self.crop_controller.get_crop_params()
+        
+        default_name = generate_output_filename(
+            self.video_processor.video_path,
+            crop_params['width'], crop_params['height'],
+            self.trim_enabled, self.start_frame, self.end_frame
+        )
+        
         output_path = filedialog.asksaveasfilename(
-            defaultextension=".mp4",
-            filetypes=[("MP4视频", "*.mp4"), ("AVI视频", "*.avi"), ("所有文件", "*.*")]
+            initialfile=default_name,
+            defaultextension=DEFAULT_OUTPUT_EXTENSION,
+            filetypes=OUTPUT_VIDEO_FORMATS
         )
         
         if not output_path:
             return
             
-        # 禁用按钮
-        self.crop_button.config(state=tk.DISABLED)
-        self.preview_button.config(state=tk.DISABLED)
-        self.reset_button.config(state=tk.DISABLED)
-        self.status_bar.config(text="正在裁切视频，请稍候...")
+        self.control_panel.enable_controls(False)
+        self.status_bar.set_status("正在处理视频，请稍候...")
         
-        # 创建并启动裁切线程
-        threading.Thread(
-            target=self.crop_video_thread,
-            args=(output_path,),
-            daemon=True
-        ).start()
+        trim_params = {'start_frame': self.start_frame, 'end_frame': self.end_frame} if has_time_crop else None
+        crop_params_to_pass = crop_params if has_spatial_crop else None
+        
+        self.video_processor.process_video(output_path, crop_params_to_pass, trim_params)
 
-    def crop_video_thread(self, output_path):
-        """在后台线程中执行裁切操作"""
-        try:
-            # 创建VideoWriter
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # MP4格式
-            out = cv2.VideoWriter(
-                output_path, 
-                fourcc, 
-                self.fps, 
-                (self.crop_width, self.crop_height)
-            )
-            
-            if not out.isOpened():
-                self.root.after(10, self.cropping_error, "无法创建输出文件")
-                return
-                
-            # 保存当前帧位置
-            original_frame_pos = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
-            
-            # 重置视频到第一帧
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            
-            # 计算进度
-            total_frames = self.total_frames
-            processed = 0
-            
-            while True:
-                ret, frame = self.cap.read()
-                if not ret:
-                    break
-                
-                try:
-                    # 确保裁切区域在帧内
-                    if (self.crop_x + self.crop_width <= frame.shape[1] and
-                        self.crop_y + self.crop_height <= frame.shape[0]):
-                        
-                        # 裁切帧并写入
-                        cropped_frame = frame[
-                            self.crop_y:self.crop_y+self.crop_height,
-                            self.crop_x:self.crop_x+self.crop_width
-                        ]
-                        out.write(cropped_frame)
-                    else:
-                        # 如果超出范围，用黑色填充
-                        self.root.after(10, lambda: self.status_bar.config(
-                            text=f"警告: 帧 {processed} 裁切区域超出范围！"))
-                    
-                except Exception as e:
-                    self.root.after(10, self.cropping_error, f"帧 {processed}: {str(e)}")
-                    out.release()
-                    os.remove(output_path)
-                    return
-                
-                processed += 1
-                if processed % 10 == 0:  # 每10帧更新一次进度
-                    self.root.after(10, self.update_progress, processed, total_frames)
-            
-            # 释放资源
-            out.release()
-            
-            # 恢复原始帧位置
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, original_frame_pos)
-            
-            # 更新UI
-            self.root.after(10, self.cropping_complete, output_path)
-            
-        except Exception as e:
-            self.root.after(10, self.cropping_error, str(e))
-
-    def update_progress(self, processed, total):
-        """更新进度显示"""
+    def on_progress(self, processed, total):
+        """处理进度回调"""
         percent = (processed / total) * 100
-        self.status_bar.config(
-            text=f"裁切进度: {processed}/{total} 帧 ({percent:.1f}%)"
-        )
+        operation_type = self._get_operation_type()
+        self.status_bar.set_status(f"{operation_type}进度: {processed}/{total} 帧 ({percent:.1f}%)")
 
-    def cropping_complete(self, output_path):
-        """裁切完成回调"""
-        self.crop_button.config(state=tk.NORMAL)
-        self.preview_button.config(state=tk.NORMAL)
-        self.reset_button.config(state=tk.NORMAL)
-        
+    def on_complete(self, output_path):
+        """处理完成回调"""
+        self.control_panel.enable_controls(True)
+        operation_type = self._get_operation_type()
         file_name = os.path.basename(output_path)
-        self.status_bar.config(text=f"裁切完成! 已保存为: {file_name}")
-        messagebox.showinfo("完成", f"视频裁切成功!\n保存位置: {output_path}")
+        self.status_bar.set_status(f"{operation_type}完成! 已保存为: {file_name}")
+        messagebox.showinfo("完成", f"视频{operation_type}成功!\n保存位置: {output_path}")
 
-    def cropping_error(self, error_msg):
-        """裁切错误回调"""
-        self.crop_button.config(state=tk.NORMAL)
-        self.preview_button.config(state=tk.NORMAL)
-        self.reset_button.config(state=tk.NORMAL)
+    def on_error(self, error_msg):
+        """处理错误回调"""
+        self.control_panel.enable_controls(True)
+        self.status_bar.set_status(f"处理出错! {error_msg}")
+        messagebox.showerror("错误", f"视频处理过程中发生错误:\n{error_msg}")
+
+    def on_warning(self, warning_msg):
+        """处理警告回调"""
+        self.status_bar.set_status(f"警告: {warning_msg}")
+
+    def toggle_trim(self):
+        """切换时间裁切功能"""
+        self.trim_enabled = self.control_panel.get_trim_enabled()
+        self.control_panel.set_trim_enabled(self.trim_enabled)
         
-        self.status_bar.config(text=f"裁切出错! {error_msg}")
-        messagebox.showerror("错误", f"视频裁切过程中发生错误:\n{error_msg}")
+        if self.trim_enabled:
+            # 确保结束帧不小于开始帧
+            if self.control_panel.get_end_frame() <= self.control_panel.get_start_frame():
+                video_info = self.video_processor.get_video_info()
+                new_end = min(self.control_panel.get_start_frame() + 1, video_info['total_frames'] - 1)
+                self.control_panel.end_frame_slider.set(new_end)
         
+        self.update_time_info()
+    
+    def update_start_frame(self, value):
+        """更新开始帧"""
+        start_frame = int(value)
+        end_frame = self.control_panel.get_end_frame()
+        
+        if start_frame >= end_frame:
+            start_frame = max(0, end_frame - 1)
+            self.control_panel.start_frame_slider.set(start_frame)
+        
+        self.start_frame = start_frame
+        self.update_time_info()
+        
+        current_frame = self.control_panel.get_current_frame()
+        if current_frame < start_frame:
+            self.update_preview(start_frame)
+    
+    def update_end_frame(self, value):
+        """更新结束帧"""
+        end_frame = int(value)
+        start_frame = self.control_panel.get_start_frame()
+        
+        if end_frame <= start_frame:
+            video_info = self.video_processor.get_video_info()
+            end_frame = min(start_frame + 1, video_info['total_frames'] - 1)
+            self.control_panel.end_frame_slider.set(end_frame)
+        
+        self.end_frame = end_frame
+        self.update_time_info()
+        
+        current_frame = self.control_panel.get_current_frame()
+        if current_frame > end_frame:
+            self.update_preview(end_frame)
+    
+    def update_time_info(self):
+        """更新时间信息显示"""
+        if not self.video_loaded:
+            return
+            
+        video_info = self.video_processor.get_video_info()
+        fps = video_info['fps']
+        
+        if self.trim_enabled:
+            self.start_frame = self.control_panel.get_start_frame()
+            self.end_frame = self.control_panel.get_end_frame()
+            
+            start_time = self.start_frame / fps
+            end_time = self.end_frame / fps
+            duration = end_time - start_time
+            
+            start_time_str = format_time(start_time)
+            end_time_str = format_time(end_time)
+            duration_str = format_time(duration)
+            
+            trim_frames = self.end_frame - self.start_frame + 1
+            
+            info_text = (f"时间裁切: {start_time_str} - {end_time_str} "
+                         f"(时长: {duration_str}, 帧数: {trim_frames})")
+        else:
+            total_time = video_info['duration']
+            total_time_str = format_time(total_time)
+            info_text = f"总时长: {total_time_str}"
+        
+        self.control_panel.update_time_info(info_text)
+    
+    def _get_operation_type(self):
+        """获取操作类型字符串"""
+        has_spatial_crop = self.crop_controller.has_valid_crop()
+        has_time_crop = self.trim_enabled
+        
+        if has_spatial_crop and has_time_crop:
+            return "裁切和剪辑"
+        elif has_spatial_crop:
+            return "裁切"
+        elif has_time_crop:
+            return "剪辑"
+        return "处理"
+    
+    def prev_frame(self):
+        """上一帧"""
+        if not self.video_loaded:
+            return
+        current_frame = self.control_panel.get_current_frame()
+        if current_frame > 0:
+            new_frame = current_frame - 1
+            self.control_panel.set_current_frame(new_frame)
+            self.update_preview(new_frame)
+    
+    def next_frame(self):
+        """下一帧"""
+        if not self.video_loaded:
+            return
+        current_frame = self.control_panel.get_current_frame()
+        video_info = self.video_processor.get_video_info()
+        if current_frame < video_info['total_frames'] - 1:
+            new_frame = current_frame + 1
+            self.control_panel.set_current_frame(new_frame)
+            self.update_preview(new_frame)
+    
+    def toggle_play(self):
+        """播放/暂停切换"""
+        if not self.video_loaded:
+            return
+            
+        if self.is_playing:
+            self.stop_playback()
+        else:
+            self.start_playback()
+    
+    def start_playback(self):
+        """开始播放"""
+        self.is_playing = True
+        self.control_panel.set_play_button_text("暂停")
+        self.play_next_frame()
+    
+    def stop_playback(self):
+        """停止播放"""
+        self.is_playing = False
+        self.control_panel.set_play_button_text("播放")
+        if self.play_timer:
+            self.root.after_cancel(self.play_timer)
+            self.play_timer = None
+    
+    def play_next_frame(self):
+        """播放下一帧"""
+        if not self.is_playing:
+            return
+            
+        current_frame = self.control_panel.get_current_frame()
+        video_info = self.video_processor.get_video_info()
+        
+        # 检查是否到达结束
+        max_frame = video_info['total_frames'] - 1
+        if self.trim_enabled and current_frame >= self.end_frame:
+            # 如果启用了时间裁切且到达结束帧，停止播放
+            self.stop_playback()
+            return
+        elif not self.trim_enabled and current_frame >= max_frame:
+            # 如果到达视频末尾，停止播放
+            self.stop_playback()
+            return
+        
+        # 播放下一帧
+        new_frame = current_frame + 1
+        self.control_panel.set_current_frame(new_frame)
+        # 播放时使用优化的预览更新
+        self.update_preview_for_playback(new_frame)
+        
+        # 计算播放间隔（基于帧率），使用浮点数计算提高精度
+        fps = video_info['fps']
+        if fps > 0:
+            interval = max(16, round(1000.0 / fps))  # 最小16ms间隔（约60fps最大）
+        else:
+            interval = 33  # 默认30fps
+        
+        # 安排下一帧播放
+        self.play_timer = self.root.after(interval, self.play_next_frame)
+    
+    def set_start_frame_to_current(self):
+        """将起始帧设置为当前帧"""
+        if not self.video_loaded:
+            return
+        current_frame = self.control_panel.get_current_frame()
+        self.control_panel.start_frame_slider.set(current_frame)
+        self.update_start_frame(current_frame)
+    
+    def set_end_frame_to_current(self):
+        """将结束帧设置为当前帧"""
+        if not self.video_loaded:
+            return
+        current_frame = self.control_panel.get_current_frame()
+        self.control_panel.end_frame_slider.set(current_frame)
+        self.update_end_frame(current_frame)
+
     def __del__(self):
         """释放资源"""
-        if self.cap and self.cap.isOpened():
-            self.cap.release()
+        self.stop_playback()
+        if hasattr(self, 'video_processor'):
+            self.video_processor.release()
 
 if __name__ == "__main__":
     root = tk.Tk()
