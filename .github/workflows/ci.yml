@@ -1,4 +1,4 @@
-name: CI
+name: Test CI Workflow
 
 on:
   push:
@@ -8,12 +8,11 @@ on:
 
 jobs:
   test:
-    # 跳过 CI 检查的条件 - 只对CI和全局跳过关键字敏感
+    # 跳过 CI 检查的条件 - 使用自定义关键字避免与GitHub内置功能冲突
     if: >
-      !contains(github.event.head_commit.message, '[skip ci]') &&
-      !contains(github.event.head_commit.message, '[ci skip]') &&
-      !contains(github.event.head_commit.message, '[no ci]') &&
-      !contains(github.event.head_commit.message, '[skip actions]') &&
+      !contains(github.event.head_commit.message, '[skip test]') &&
+      !contains(github.event.head_commit.message, '[no test]') &&
+      !contains(github.event.head_commit.message, '[skip testing]') &&
       !contains(github.event.head_commit.message, '[skip all]') &&
       !contains(github.event.head_commit.message, '[no automation]')
     runs-on: ${{ matrix.os }}

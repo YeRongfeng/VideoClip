@@ -79,14 +79,13 @@
 
 ### 跳过 CI 检查
 在提交信息中包含以下任一关键字：
-- `[skip ci]`
-- `[ci skip]`
-- `[no ci]`
-- `[skip actions]`
+- `[skip test]`
+- `[no test]`
+- `[skip testing]`
 
 **示例**:
 ```bash
-git commit -m "docs: 更新README [skip ci]"
+git commit -m "docs: 更新README [skip test]"
 ```
 
 ### 跳过代码质量检查
@@ -136,5 +135,6 @@ git commit -m "docs: 仅文档更新 [skip all]"
 2. **最终提交**: 确保最终的代码提交通过所有检查
 3. **团队协作**: 在团队环境中使用前与团队成员沟通
 4. **安全考虑**: 跳过检查可能引入代码质量问题
+5. **GitHub 内置关键字**: `[skip ci]` 等内置关键字会跳过所有工作流，建议使用我们的自定义关键字进行精确控制
 
 通过合理使用这些模板和功能，可以显著提高项目的协作效率和代码质量。
