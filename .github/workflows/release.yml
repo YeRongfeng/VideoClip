@@ -11,6 +11,9 @@ on:
         required: true
         default: 'v1.0.0'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -63,7 +66,8 @@ jobs:
         copy README.md VideoClip-Windows\
         echo "VideoClip - 视频裁切工具" > VideoClip-Windows\README.txt
         echo "运行 VideoClip.exe 启动应用程序" >> VideoClip-Windows\README.txt
-        7z a VideoClip-Windows.zip VideoClip-Windows\
+        echo "系统要求: Windows 10 或更高版本" >> VideoClip-Windows\README.txt
+        powershell Compress-Archive VideoClip-Windows VideoClip-Windows.zip
 
     - name: Create distribution package (Linux)
       if: runner.os == 'Linux'
@@ -73,6 +77,7 @@ jobs:
         cp README.md VideoClip-Linux/
         echo "VideoClip - 视频裁切工具" > VideoClip-Linux/README.txt
         echo "运行 ./VideoClip 启动应用程序" >> VideoClip-Linux/README.txt
+        echo "系统要求: Ubuntu 18.04+ 或其他现代Linux发行版" >> VideoClip-Linux/README.txt
         chmod +x VideoClip-Linux/VideoClip
         tar -czf VideoClip-Linux.tar.gz VideoClip-Linux/
 
@@ -83,11 +88,14 @@ jobs:
         path: |
           VideoClip-Windows.zip
           VideoClip-Linux.tar.gz
+        if-no-files-found: ignore
 
   release:
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
 
     steps:
     - uses: actions/checkout@v4
@@ -104,51 +112,56 @@ jobs:
           echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
         fi
 
+    - name: Prepare release files
+      run: |
+        ls -la
+        find . -name "*.zip" -o -name "*.tar.gz"
+        # 移动文件到当前目录以便上传
+        if [ -f "VideoClip-Windows/VideoClip-Windows.zip" ]; then
+          mv VideoClip-Windows/VideoClip-Windows.zip ./
+        fi
+        if [ -f "VideoClip-Linux/VideoClip-Linux.tar.gz" ]; then
+          mv VideoClip-Linux/VideoClip-Linux.tar.gz ./
+        fi
+
     - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ steps.get_version.outputs.VERSION }}
-        release_name: VideoClip ${{ steps.get_version.outputs.VERSION }}
+        name: VideoClip ${{ steps.get_version.outputs.VERSION }}
         body: |
           ## VideoClip ${{ steps.get_version.outputs.VERSION }}
           
-          ### 新功能
-          - 视频空间裁切功能
-          - 视频时间剪辑功能
-          - 实时预览播放
-          - 多平台支持
+          🎉 **新版本发布！** 一个功能强大的视频裁切和剪辑工具
           
-          ### 下载说明
-          - Windows用户：下载 `VideoClip-Windows.zip`
-          - Linux用户：下载 `VideoClip-Linux.tar.gz`
+          ### ✨ 主要功能
+          - 🎬 **空间裁切**: 通过鼠标拖拽选择裁切区域
+          - ⏱️ **时间剪辑**: 精确选择视频起始和结束时间
+          - 🎥 **实时预览**: 支持播放控制和逐帧预览
+          - 📱 **用户友好**: 简洁直观的图形界面
+          - 🔄 **智能缩放**: 自动适应窗口大小
           
-          ### 系统要求
-          - Python 3.8+ (如果从源码运行)
-          - FFmpeg (用于视频处理)
-          - 支持的视频格式：MP4, AVI, MOV, MKV
+          ### 📦 下载说明
+          - **Windows 用户**: 下载 `VideoClip-Windows.zip`，解压后运行 `VideoClip.exe`
+          - **Linux 用户**: 下载 `VideoClip-Linux.tar.gz`，解压后运行 `./VideoClip`
           
+          ### 🔧 系统要求
+          - 支持的操作系统: Windows 10+, Ubuntu 18.04+
+          - 支持的视频格式: MP4, AVI, MOV, MKV, FLV
+          - 内存: 建议 2GB+ RAM
+          
+          ### 🚀 快速开始
+          1. 下载对应平台的压缩包
+          2. 解压到任意目录
+          3. 运行可执行文件
+          4. 选择视频文件开始裁切！
+          
+          ---
+          
+          💡 **提示**: 如果遇到问题，请查看 [使用文档](https://github.com/YeRongfeng/VideoClip#使用方法) 或提交 [Issue](https://github.com/YeRongfeng/VideoClip/issues)
+        files: |
+          VideoClip-Windows.zip
+          VideoClip-Linux.tar.gz
         draft: false
         prerelease: false
-
-    - name: Upload Windows Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: VideoClip-Windows/VideoClip-Windows.zip
-        asset_name: VideoClip-Windows.zip
-        asset_content_type: application/zip
-
-    - name: Upload Linux Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: VideoClip-Linux/VideoClip-Linux.tar.gz
-        asset_name: VideoClip-Linux.tar.gz
-        asset_content_type: application/gzip
+        token: ${{ secrets.GITHUB_TOKEN }}
