@@ -1,0 +1,18 @@
+# Ruff configuration for relaxed development
+line-length = 100
+target-version = "py38"
+
+[lint]
+# Only enable essential syntax and runtime errors
+select = [
+    "E9",   # SyntaxError
+    "W6",   # DeprecationWarning
+]
+
+# Explicitly ignore all F-rules (imports, undefined names, etc.)
+extend-ignore = [
+    "F",      # All pyflakes rules
+    "E501",   # line too long
+    "E203",   # whitespace before ':'
+    "E402",   # module level import not at top
+]

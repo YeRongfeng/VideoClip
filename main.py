@@ -2,15 +2,7 @@ import os
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
-from config import (
-    CONTROL_BG,
-    DEFAULT_OUTPUT_EXTENSION,
-    OUTPUT_VIDEO_FORMATS,
-    SUPPORTED_VIDEO_FORMATS,
-    WINDOW_BG,
-    WINDOW_SIZE,
-    WINDOW_TITLE,
-)
+from config import *
 from crop_controller import CropController
 from ui_components import StatusBar, VideoCanvas, VideoControlPanel
 from utils import format_time, generate_output_filename
