@@ -11,6 +11,15 @@ on:
 
 jobs:
   code-quality:
+    # 跳过代码质量检查的条件 (定时任务除外)
+    if: >
+      github.event_name == 'schedule' || (
+        !contains(github.event.head_commit.message, '[skip quality]') &&
+        !contains(github.event.head_commit.message, '[no quality]') &&
+        !contains(github.event.head_commit.message, '[skip lint]') &&
+        !contains(github.event.head_commit.message, '[skip all]') &&
+        !contains(github.event.head_commit.message, '[no automation]')
+      )
     runs-on: ubuntu-latest
 
     steps:

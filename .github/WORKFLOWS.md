@@ -145,3 +145,34 @@ uv run ruff format .
 4. 合并到主分支
 
 更多信息请参考 [GitHub Actions 文档](https://docs.github.com/en/actions)。
+
+## 📋 GitHub 模板
+
+本项目提供了标准化的 Issue 和 Pull Request 模板：
+
+### Issue 模板
+- **Bug Report** (`.github/ISSUE_TEMPLATE/bug_report.md`): 报告软件缺陷
+- **Feature Request** (`.github/ISSUE_TEMPLATE/feature_request.md`): 建议新功能
+
+### Pull Request 模板
+- **PR Template** (`.github/pull_request_template.md`): 规范化代码贡献流程
+
+**详细使用指南**: 参考 [TEMPLATE_USAGE.md](.github/TEMPLATE_USAGE.md)
+
+## 🚫 跳过 CI/CD 检查
+
+在提交消息中使用特定关键字可以跳过自动化检查：
+
+### 跳过关键字
+- **跳过 CI**: `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`
+- **跳过代码质量**: `[skip quality]`, `[no quality]`, `[skip lint]`  
+- **跳过所有**: `[skip all]`, `[no automation]`
+
+### 使用示例
+```bash
+git commit -m "docs: 更新README [skip ci]"
+git commit -m "config: 调整配置 [skip quality]"
+git commit -m "fix: 修正拼写 [skip all]"
+```
+
+**快速参考**: 查看 [SKIP_CI_REFERENCE.md](.github/SKIP_CI_REFERENCE.md)
