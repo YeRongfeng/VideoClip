@@ -11,6 +11,7 @@
 [no ci]          # 跳过 CI 检查
 [skip actions]   # 跳过 Actions
 ```
+**注意**: 这些关键字只会跳过CI测试，不会影响代码质量检查
 
 ### 🔍 跳过代码质量检查 (code-quality.yml)  
 ```bash
@@ -18,6 +19,7 @@
 [no quality]     # 跳过代码质量检查
 [skip lint]      # 跳过 lint 检查
 ```
+**注意**: 这些关键字只会跳过代码质量检查，不会影响CI测试
 
 ### 🚫 跳过所有自动化
 ```bash
@@ -31,14 +33,17 @@
 # 仅文档更新，跳过所有检查
 git commit -m "docs: 更新用户手册 [skip all]"
 
-# 临时提交，跳过 CI 测试
+# 临时提交，只跳过 CI 测试（代码质量检查仍会运行）
 git commit -m "wip: 正在开发新功能 [skip ci]"
 
-# 配置文件修改，跳过代码质量检查
+# 配置文件修改，只跳过代码质量检查（CI测试仍会运行）
 git commit -m "config: 调整 ruff 配置 [skip quality]"
 
-# 修复拼写错误，跳过 CI
+# 修复拼写错误，只跳过 CI 测试
 git commit -m "fix: 修正注释中的拼写错误 [ci skip]"
+
+# 格式调整，只跳过代码质量检查
+git commit -m "style: 调整代码格式 [skip lint]"
 ```
 
 ## ⚠️ 注意事项
